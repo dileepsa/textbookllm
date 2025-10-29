@@ -10,15 +10,6 @@
     <header class="site-header">
       <div class="container header-inner">
         <h1>TextbookLLM</h1>
-        <div class="api-config">
-          <label for="api-base">API:</label>
-          <input
-            id="api-base"
-            type="text"
-            placeholder="http://127.0.0.1:8000"
-          />
-          <button id="save-api" title="Save API base">Save</button>
-        </div>
       </div>
     </header>
 
@@ -47,7 +38,18 @@
             name="q"
             placeholder="Ask a question about your documents..."
           />
-          <input type="number" id="k" name="k" value="5" min="1" max="20" />
+          <div class="input-group">
+            <label for="k">Chunks:</label>
+            <input
+              type="number"
+              id="k"
+              name="k"
+              value="5"
+              min="1"
+              max="1000"
+              title="Number of chunks to retrieve (1-200)"
+            />
+          </div>
           <button type="submit">Search</button>
         </form>
         <div id="query-status" class="status"></div>
@@ -58,16 +60,12 @@
           </div>
           <pre id="answer"></pre>
         </div>
-        <div class="retrieved">
-          <h3>Retrieved Chunks</h3>
-          <div id="retrieved"></div>
-        </div>
       </section>
     </main>
 
     <footer class="site-footer">
       <div class="container">
-        <span class="muted">Notebook LLM clone · In-memory demo pipeline</span>
+        <span class="muted"></span>
       </div>
     </footer>
 
