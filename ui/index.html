@@ -36,10 +36,32 @@
           <button id="upload-btn">Upload</button>
           <div id="ingest-status" class="status"></div>
         </div>
+
+        <!-- Uploaded Files List -->
+        <div class="uploaded-files-section">
+          <h3>Uploaded Files</h3>
+          <div id="uploaded-files-list" class="uploaded-files-list">
+            <p class="muted">No files uploaded yet</p>
+          </div>
+        </div>
       </section>
 
       <section class="card">
         <h2>Query</h2>
+        <div class="file-filter">
+          <label>
+            <input type="checkbox" id="filter-files-toggle" />
+            Filter by specific files
+          </label>
+          <div id="file-selector" class="file-selector" style="display: none">
+            <p class="muted">
+              Select files to query (leave empty for all files):
+            </p>
+            <div id="file-list" class="file-list">
+              <p class="muted">No files uploaded yet</p>
+            </div>
+          </div>
+        </div>
         <form id="query-form" class="row">
           <input
             type="text"
