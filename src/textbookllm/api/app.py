@@ -1,12 +1,19 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
+
+from dotenv import load_dotenv
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from ..models import QueryRequest, QueryResponse
 from ..services.pipeline import DefaultPipeline
+
+# Load .env file from project root
+env_path = Path(__file__).parent.parent.parent.parent / ".env"
+load_dotenv(env_path)
 
 
 app = FastAPI(title="TextbookLLM API", version="0.1.0")

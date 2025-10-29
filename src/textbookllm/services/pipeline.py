@@ -3,10 +3,18 @@ from __future__ import annotations
 import hashlib
 import os
 import uuid
+from pathlib import Path  
 from typing import List, Tuple
+
+from dotenv import load_dotenv
 
 from ..contracts import Chunker, Embedder, LLMClient, MetadataStore, Pipeline, Retriever, VectorStore
 from ..models import Chunk, Document, Embedding, IngestionResult, QueryRequest, QueryResponse, RetrievedChunk, SourceType
+from .gemini import GeminiClient
+
+# Load .env file from project root
+env_path = Path(__file__).parent.parent.parent.parent / ".env"
+load_dotenv(env_path)
 
 
 class SimpleChunker(Chunker):
@@ -120,7 +128,14 @@ class DefaultPipeline(Pipeline):
 		self.embedder = HashEmbedder()
 		self.vector_store = InMemoryVectorStore()
 		self.retriever = SimpleRetriever(self.vector_store, self.embedder, self.metadata)
-		self.llm = EchoLLM()
+	
+		if os.environ.get("GEMINI_API_KEY"):
+			print("[DEBUG] Initializing GeminiClient...")
+			self.llm = GeminiClient()
+			print(f"[DEBUG] GeminiClient initialized. Model configured: {self.llm._model is not None}")
+		else:
+			print("[DEBUG] GEMINI_API_KEY not found. Using EchoLLM fallback.")
+			self.llm = EchoLLM()
 
 	def ingest(self, source_path: str, *, mime_type: str | None = None) -> IngestionResult:
 		# Minimal ingestion: read text files; other types are placeholders
@@ -144,10 +159,14 @@ class DefaultPipeline(Pipeline):
 		return result
 
 	def query(self, request: QueryRequest) -> QueryResponse:
+		print(f"[DEBUG] Pipeline.query called with: {request.query[:50]}...")
 		pairs: List[Tuple[Chunk, float]] = self.retriever.retrieve(request)
+		print(f"[DEBUG] Retrieved {len(pairs)} chunks")
 		context = "\n\n".join(c.text for c, _ in pairs)
 		prompt = f"Answer the user using the context below. If unsure, say you don't know.\n\nContext:\n{context}\n\nQuestion: {request.query}\nAnswer:"
+		print(f"[DEBUG] Calling LLM.generate (LLM type: {type(self.llm).__name__})")
 		answer = self.llm.generate(prompt)
+		print(f"[DEBUG] LLM returned answer (length: {len(answer)})")
 		retrieved = [RetrievedChunk(chunk=c, score=s) for c, s in pairs]
 		docs = []
 		return QueryResponse(answer=answer, retrieved=retrieved, source_documents=docs, llm_metadata={})

@@ -3,32 +3,74 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>TextbookLLM UI</title>
+    <title>TextbookLLM</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <div class="container">
-      <h1>TextbookLLM</h1>
-      <section>
+    <header class="site-header">
+      <div class="container header-inner">
+        <h1>TextbookLLM</h1>
+        <div class="api-config">
+          <label for="api-base">API:</label>
+          <input
+            id="api-base"
+            type="text"
+            placeholder="http://127.0.0.1:8000"
+          />
+          <button id="save-api" title="Save API base">Save</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="container">
+      <section class="card">
         <h2>Ingest</h2>
-        <form id="ingest-form">
-          <input type="file" id="file" name="file" />
-          <button type="submit">Upload</button>
-        </form>
-        <div id="ingest-result" class="muted"></div>
+        <div id="dropzone" class="dropzone">
+          <div class="dz-instructions">
+            Drop files here or
+            <label for="file" class="link">browse</label>
+          </div>
+          <input type="file" id="file" name="file" hidden />
+        </div>
+        <div class="row">
+          <button id="upload-btn">Upload</button>
+          <div id="ingest-status" class="status"></div>
+        </div>
       </section>
 
-      <section>
+      <section class="card">
         <h2>Query</h2>
-        <form id="query-form">
-          <input type="text" id="q" name="q" placeholder="Ask a question..." />
+        <form id="query-form" class="row">
+          <input
+            type="text"
+            id="q"
+            name="q"
+            placeholder="Ask a question about your documents..."
+          />
           <input type="number" id="k" name="k" value="5" min="1" max="20" />
           <button type="submit">Search</button>
         </form>
-        <pre id="answer"></pre>
-        <div id="retrieved"></div>
+        <div id="query-status" class="status"></div>
+        <div class="answer-card">
+          <div class="answer-header">
+            <h3>Answer</h3>
+            <button id="copy-answer" title="Copy answer">Copy</button>
+          </div>
+          <pre id="answer"></pre>
+        </div>
+        <div class="retrieved">
+          <h3>Retrieved Chunks</h3>
+          <div id="retrieved"></div>
+        </div>
       </section>
-    </div>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container">
+        <span class="muted">Notebook LLM clone · In-memory demo pipeline</span>
+      </div>
+    </footer>
+
     <script src="app.js"></script>
   </body>
 </html>

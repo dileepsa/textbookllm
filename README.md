@@ -34,6 +34,7 @@ src/textbookllm/
     app.py        # FastAPI app
   services/
     pipeline.py   # Default in-memory pipeline
+    gemini.py     # Gemini LLM client
 ui/
   index.html
   styles.css
@@ -53,7 +54,15 @@ poetry run uvicorn textbookllm.api.app:app --reload
 cd ui
 python -m http.server 8080
 ```
-- Visit `http://127.0.0.1:8080` and set API base to `http://127.0.0.1:8000` (default in `ui/app.js`).
+- Visit `http://127.0.0.1:8080` with API at `http://127.0.0.1:8000`.
+
+## Gemini setup (optional but recommended)
+1. Get an API key from [Google AI Studio](https://aistudio.google.com/apikey)
+2. Edit the `.env` file in the project root and add your API key:
+```bash
+GEMINI_API_KEY=your_actual_api_key_here
+```
+3. The `DefaultPipeline` will automatically use Gemini when `GEMINI_API_KEY` is present; otherwise it falls back to a simple echo model for development.
 
 ## Contribution Guide
 - Choose a component and implement the interface in `contracts.py`.
@@ -70,10 +79,6 @@ python -m http.server 8080
 - Reranker: Cross-encoder rerankers (optional)
 - LLMs: Gemini client, mock client for dev
 - UI: Streamlit alt UI, better HTML page, file drag-and-drop
-
-## Gemini (Free) Integration
-- Implement `LLMClient` as `GeminiClient` and call the Gemini API using a `GEMINI_API_KEY` env var.
-- For development, `EchoLLM` is wired by default. Swap in `GeminiClient` when ready.
 
 ## Notes
 - Current default pipeline ingests plain text files only, with a hash-based fake embedder and in-memory stores for quick iteration.
