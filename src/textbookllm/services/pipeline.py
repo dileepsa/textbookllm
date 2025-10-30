@@ -1,10 +1,12 @@
+"""Default pipeline implementation with in-memory stores."""
+
 from __future__ import annotations
 
 import hashlib
 import os
 import uuid
-from pathlib import Path  
-from typing import List, Tuple
+from pathlib import Path
+from typing import List, Tuple, Optional
 
 from dotenv import load_dotenv
 
@@ -12,6 +14,8 @@ from ..contracts import Chunker, Embedder, LLMClient, MetadataStore, Pipeline, R
 from ..models import Chunk, Document, Embedding, IngestionResult, QueryRequest, QueryResponse, RetrievedChunk, SourceType
 from .gemini import GeminiClient
 from .multimedia import MultimediaProcessor
+from .llm import EchoLLM
+from .chromadb_store import ChromaDBMetadataStore, ChromaDBVectorStore
 
 # Load .env file from project root
 env_path = Path(__file__).parent.parent.parent.parent / ".env"
@@ -76,7 +80,7 @@ class InMemoryVectorStore(VectorStore):
 		num = sum(x * y for x, y in zip(a, b))
 		den_a = sum(x * x for x in a) ** 0.5
 		den_b = sum(y * y for y in b) ** 0.5
-		if den_a == 0.0 or den_b == 0.0:
+		if abs(den_a) < 1e-10 or abs(den_b) < 1e-10:
 			return 0.0
 		return num / (den_a * den_b)
 
@@ -96,7 +100,7 @@ class InMemoryMetadataStore(MetadataStore):
 		for c in result.chunks:
 			self._chunks[c.id] = c
 
-	def get_document(self, document_id: str) -> Document | None:
+	def get_document(self, document_id: str) -> Optional[Document]:
 		return self._documents.get(document_id)
 
 	def get_chunks(self, chunk_ids: List[str]) -> List[Chunk]:
@@ -113,7 +117,7 @@ class SimpleRetriever(Retriever):
 		[q_emb] = self._embed.embed([request.query])
 		hits = self._vs.search(q_emb, request.max_results)
 		chunks = self._meta.get_chunks([cid for cid, _ in hits])
-		score_map = {cid: score for cid, score in hits}
+		score_map = dict(hits)
 		return [(c, score_map.get(c.id, 0.0)) for c in chunks]
 
 
@@ -124,24 +128,26 @@ class EchoLLM(LLMClient):
 
 class DefaultPipeline(Pipeline):
 	def __init__(self, use_base64_multimedia: bool = False) -> None:
-		self.metadata = InMemoryMetadataStore()
+		"""Initialize pipeline with default components.
+		
+		Uses Gemini if GEMINI_API_KEY is set, otherwise falls back to EchoLLM.
+		"""
+		self.metadata = ChromaDBMetadataStore()
 		self.chunker = SimpleChunker()
 		self.embedder = HashEmbedder()
-		self.vector_store = InMemoryVectorStore()
+		self.vector_store = ChromaDBVectorStore()
 		self.retriever = SimpleRetriever(self.vector_store, self.embedder, self.metadata)
 		
 		# Initialize multimedia processor with BASE64 option
 		self.multimedia_processor = MultimediaProcessor(use_base64=use_base64_multimedia)
 	
 		if os.environ.get("GEMINI_API_KEY"):
-			print("[DEBUG] Initializing GeminiClient...")
-			self.llm = GeminiClient()
-			print(f"[DEBUG] GeminiClient initialized. Model configured: {self.llm._model is not None}")
+			self.llm: LLMClient = GeminiClient()
 		else:
 			print("[DEBUG] GEMINI_API_KEY not found. Using EchoLLM fallback.")
 			self.llm = EchoLLM()
 
-	def ingest(self, source_path: str, *, mime_type: str | None = None) -> IngestionResult:
+	def ingest(self, source_path: str, *, mime_type: Optional[str] = None) -> IngestionResult:
 		"""
 		Ingest a file (text, image, audio, or video) and extract text content.
 		"""
@@ -166,11 +172,11 @@ class DefaultPipeline(Pipeline):
 		
 		# Process file to extract text content
 		if file_type in ['image', 'audio', 'video']:
-			print(f"[DEBUG] Processing multimedia file with Gemini...")
+			print("[DEBUG] Processing multimedia file with Gemini...")
 			text_content = self.multimedia_processor.process_file(source_path)
 		else:
 			# Handle as text file
-			print(f"[DEBUG] Reading text file...")
+			print("[DEBUG] Reading text file...")
 			with open(source_path, "r", encoding="utf-8", errors="ignore") as f:
 				text_content = f.read()
 		
@@ -194,6 +200,9 @@ class DefaultPipeline(Pipeline):
 		self.vector_store.upsert([c.id for c in chunks], embs, chunks)
 		
 		# Create and store ingestion result
+		embeddings = self.embedder.embed([c.text for c in chunks])
+		self.vector_store.upsert([c.id for c in chunks], embeddings, chunks)
+		
 		result = IngestionResult(document=doc, chunks=chunks, num_chunks=len(chunks))
 		self.metadata.write_ingestion(result)
 		
@@ -201,14 +210,50 @@ class DefaultPipeline(Pipeline):
 		return result
 
 	def query(self, request: QueryRequest) -> QueryResponse:
-		print(f"[DEBUG] Pipeline.query called with: {request.query[:50]}...")
+		"""Process a query and return response.
+		
+		Args:
+			request: Query request with question and max_results.
+			
+		Returns:
+			Query response with answer and retrieved chunks.
+		"""
 		pairs: List[Tuple[Chunk, float]] = self.retriever.retrieve(request)
-		print(f"[DEBUG] Retrieved {len(pairs)} chunks")
+		
 		context = "\n\n".join(c.text for c, _ in pairs)
-		prompt = f"Answer the user using the context below. If unsure, say you don't know.\n\nContext:\n{context}\n\nQuestion: {request.query}\nAnswer:"
-		print(f"[DEBUG] Calling LLM.generate (LLM type: {type(self.llm).__name__})")
+		prompt = (
+			f"Answer the user using the context below. "
+			f"If unsure, say you don't know.\n\nContext:\n{context}\n\n"
+			f"Question: {request.query}\nAnswer:"
+		)
+		
 		answer = self.llm.generate(prompt)
 		print(f"[DEBUG] LLM returned answer (length: {len(answer)})")
 		retrieved = [RetrievedChunk(chunk=c, score=s) for c, s in pairs]
-		docs = []
-		return QueryResponse(answer=answer, retrieved=retrieved, source_documents=docs, llm_metadata={})
+		
+		return QueryResponse(
+			answer=answer,
+			retrieved=retrieved,
+			source_documents=[],
+			llm_metadata={}
+		)
+
+	def delete_document(self, document_id: str) -> bool:
+		"""Delete a document and all its chunks from both metadata and vector stores.
+		
+		Args:
+			document_id: ID of the document to delete.
+			
+		Returns:
+			True if deleted successfully, False otherwise.
+		"""
+		# Get all chunk IDs for this document
+		chunk_ids = self.metadata.get_chunk_ids_by_document(document_id)
+		
+		# Delete from vector store
+		if chunk_ids:
+			self.vector_store.delete(chunk_ids)
+		
+		# Delete from metadata store
+		return self.metadata.delete_document(document_id)
+

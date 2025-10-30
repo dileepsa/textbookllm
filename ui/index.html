@@ -10,15 +10,6 @@
     <header class="site-header">
       <div class="container header-inner">
         <h1>TextbookLLM</h1>
-        <div class="api-config">
-          <label for="api-base">API:</label>
-          <input
-            id="api-base"
-            type="text"
-            placeholder="http://127.0.0.1:8000"
-          />
-          <button id="save-api" title="Save API base">Save</button>
-        </div>
       </div>
     </header>
 
@@ -42,14 +33,51 @@
             hidden
           />
         </div>
+
+        <!-- Selected File Display -->
+        <div id="selected-file" class="selected-file" style="display: none">
+          <div class="file-preview">
+            <span class="file-icon">📄</span>
+            <div class="file-details">
+              <div class="file-name" id="selected-file-name"></div>
+              <div class="file-size" id="selected-file-size"></div>
+            </div>
+            <button class="remove-file" id="remove-file" title="Remove file">
+              ✕
+            </button>
+          </div>
+        </div>
+
         <div class="row">
           <button id="upload-btn">Upload</button>
           <div id="ingest-status" class="status"></div>
+        </div>
+
+        <!-- Uploaded Files List -->
+        <div class="uploaded-files-section">
+          <h3>Uploaded Files</h3>
+          <div id="uploaded-files-list" class="uploaded-files-list">
+            <p class="muted">No files uploaded yet</p>
+          </div>
         </div>
       </section>
 
       <section class="card">
         <h2>Query</h2>
+        <div class="file-filter">
+          <label>
+            <input type="checkbox" id="filter-files-toggle" />
+            Filter by specific files
+          </label>
+          <div id="file-selector" class="file-selector" style="display: none">
+            <p class="muted">
+              Select files to query (leave empty for all files):
+            </p>
+            <div id="file-list" class="file-list">
+              <p class="muted">No files uploaded yet</p>
+            </div>
+          </div>
+        </div>
         <form id="query-form" class="row">
           <input
             type="text"
@@ -57,7 +85,18 @@
             name="q"
             placeholder="Ask a question about your documents..."
           />
-          <input type="number" id="k" name="k" value="5" min="1" max="20" />
+          <div class="input-group">
+            <label for="k">Chunks:</label>
+            <input
+              type="number"
+              id="k"
+              name="k"
+              value="5"
+              min="1"
+              max="1000"
+              title="Number of chunks to retrieve (1-200)"
+            />
+          </div>
           <button type="submit">Search</button>
         </form>
         <div id="query-status" class="status"></div>
@@ -68,16 +107,12 @@
           </div>
           <pre id="answer"></pre>
         </div>
-        <div class="retrieved">
-          <h3>Retrieved Chunks</h3>
-          <div id="retrieved"></div>
-        </div>
       </section>
     </main>
 
     <footer class="site-footer">
       <div class="container">
-        <span class="muted">Notebook LLM clone · In-memory demo pipeline</span>
+        <span class="muted"></span>
       </div>
     </footer>
 

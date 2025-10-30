@@ -52,6 +52,11 @@ class VectorStore(ABC):
 		"""Return list of (chunk_id, score). Higher score = more similar."""
 		...
 
+	@abstractmethod
+	def delete(self, ids: List[str]) -> None:
+		"""Delete vectors by their IDs."""
+		...
+
 
 class MetadataStore(ABC):
 	@abstractmethod
@@ -64,6 +69,26 @@ class MetadataStore(ABC):
 
 	@abstractmethod
 	def get_chunks(self, chunk_ids: Iterable[str]) -> List[Chunk]:
+		...
+
+	@abstractmethod
+	def list_all_documents(self) -> List[Document]:
+		"""Return all stored documents."""
+		...
+
+	@abstractmethod
+	def get_documents_by_filenames(self, filenames: List[str]) -> List[Document]:
+		"""Return documents matching the given filenames."""
+		...
+
+	@abstractmethod
+	def delete_document(self, document_id: str) -> bool:
+		"""Delete a document and return True if successful."""
+		...
+
+	@abstractmethod
+	def get_chunk_ids_by_document(self, document_id: str) -> List[str]:
+		"""Get all chunk IDs belonging to a document."""
 		...
 
 
@@ -86,4 +111,9 @@ class Pipeline(ABC):
 
 	@abstractmethod
 	def query(self, request: QueryRequest) -> QueryResponse:
+		...
+
+	@abstractmethod
+	def delete_document(self, document_id: str) -> bool:
+		"""Delete a document and its chunks. Return True if successful."""
 		...

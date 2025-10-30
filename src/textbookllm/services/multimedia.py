@@ -32,38 +32,46 @@ class MultimediaProcessor:
             return
             
         if self._api_key:
-            try:
-                genai.configure(api_key=self._api_key)
-                # Use the same working model that GeminiClient uses
-                # Try to find a working multimodal model
-                available_models = list(genai.list_models())
-                multimodal_model_name = None
-                
-                # Look for models that support both generateContent and vision
-                for model in available_models:
-                    if 'generateContent' in model.supported_generation_methods:
-                        model_name = model.name.replace('models/', '')
-                        # Try models that are likely to support vision
-                        if any(keyword in model_name.lower() for keyword in ['pro', 'vision', 'flash']):
-                            try:
-                                test_model = genai.GenerativeModel(model_name)
-                                multimodal_model_name = model_name
-                                print(f"[DEBUG] Found working multimodal model: {model_name}")
-                                break
-                            except:
-                                continue
-                
-                if multimodal_model_name:
-                    self._vision_model = genai.GenerativeModel(multimodal_model_name)
-                    self._multimodal_model = genai.GenerativeModel(multimodal_model_name)
-                    print(f"[DEBUG] Multimedia processor using model: {multimodal_model_name}")
-                else:
-                    print("[WARNING] No suitable multimodal model found")
-                    
-            except Exception as e:
-                print(f"[WARNING] Failed to initialize Gemini for multimedia: {e}")
+            self._initialize_gemini_models()
         else:
             print("[WARNING] No Gemini API key - multimedia processing will use fallback")
+    
+    def _initialize_gemini_models(self):
+        """Initialize Gemini models for multimedia processing."""
+        try:
+            genai.configure(api_key=self._api_key)
+            multimodal_model_name = self._find_working_multimodal_model()
+            
+            if multimodal_model_name:
+                self._vision_model = genai.GenerativeModel(multimodal_model_name)
+                self._multimodal_model = genai.GenerativeModel(multimodal_model_name)
+                print(f"[DEBUG] Multimedia processor using model: {multimodal_model_name}")
+            else:
+                print("[WARNING] No suitable multimodal model found")
+                
+        except Exception as e:
+            print(f"[WARNING] Failed to initialize Gemini for multimedia: {e}")
+    
+    def _find_working_multimodal_model(self) -> Optional[str]:
+        """Find a working multimodal model from available models."""
+        available_models = list(genai.list_models())
+        
+        for model in available_models:
+            if 'generateContent' not in model.supported_generation_methods:
+                continue
+                
+            model_name = model.name.replace('models/', '')
+            if not any(keyword in model_name.lower() for keyword in ['pro', 'vision', 'flash']):
+                continue
+                
+            try:
+                _ = genai.GenerativeModel(model_name)
+                print(f"[DEBUG] Found working multimodal model: {model_name}")
+                return model_name
+            except Exception:
+                continue
+        
+        return None
     
     def encode_file_to_base64(self, file_path: str) -> str:
         """
@@ -155,99 +163,92 @@ Instructions:
             return f"[Image file: {Path(image_path).name}] - Gemini API not configured for image processing"
         
         try:
-            # Load and validate image
             print(f"[DEBUG] Loading image: {image_path}")
             
-            # First try to use Gemini directly without PIL processing
-            try:
-                # Upload image directly to Gemini for processing
-                print("[DEBUG] Uploading image directly to Gemini...")
-                image_file = genai.upload_file(path=image_path)
+            # Try direct upload first, then PIL fallback
+            result = self._try_direct_gemini_upload(image_path)
+            if result:
+                return result
                 
-                # Create a comprehensive prompt for image analysis
-                prompt = """
-                Analyze this image in detail and provide a comprehensive description that includes:
-                
-                1. Main subjects/objects in the image
-                2. Scene description and setting
-                3. Colors, composition, and visual elements
-                4. Any text visible in the image (OCR)
-                5. Important details that would be useful for understanding the content
-                6. Context or purpose if apparent
-                
-                Make the description detailed enough that someone could understand the key information from the image without seeing it.
-                """
-                
-                print("[DEBUG] Calling Gemini vision model...")
-                response = self._vision_model.generate_content([prompt, image_file])
-                
-                # Clean up uploaded file
-                genai.delete_file(image_file.name)
-                
-                print("[DEBUG] Got response from Gemini vision")
-                
-                # Extract text from response
-                if hasattr(response, 'text') and response.text:
-                    result = f"[Image Analysis]\n{response.text}"
-                    print(f"[DEBUG] Successfully extracted text (length: {len(result)})")
-                    return result
-                else:
-                    print(f"[DEBUG] No text in response: {response}")
-                    # Try to extract from candidates
-                    if hasattr(response, 'candidates') and response.candidates:
-                        candidate = response.candidates[0]
-                        if hasattr(candidate, 'content') and candidate.content:
-                            parts = candidate.content.parts
-                            if parts and len(parts) > 0:
-                                text = parts[0].text
-                                result = f"[Image Analysis]\n{text}"
-                                print(f"[DEBUG] Extracted from candidates (length: {len(result)})")
-                                return result
-                    return f"[Image file: {Path(image_path).name}] - Could not generate description (empty response)"
-                    
-            except Exception as direct_error:
-                print(f"[DEBUG] Direct Gemini upload failed: {direct_error}")
-                
-                # Fallback: Try PIL processing first, then Gemini
-                try:
-                    image = Image.open(image_path)
-                    print(f"[DEBUG] Image loaded with PIL: {image.size}, mode: {image.mode}")
-                    
-                    # Create a comprehensive prompt for image analysis
-                    prompt = """
-                    Analyze this image in detail and provide a comprehensive description that includes:
-                    
-                    1. Main subjects/objects in the image
-                    2. Scene description and setting
-                    3. Colors, composition, and visual elements
-                    4. Any text visible in the image (OCR)
-                    5. Important details that would be useful for understanding the content
-                    6. Context or purpose if apparent
-                    
-                    Make the description detailed enough that someone could understand the key information from the image without seeing it.
-                    """
-                    
-                    print("[DEBUG] Calling Gemini vision model with PIL image...")
-                    response = self._vision_model.generate_content([prompt, image])
-                    print("[DEBUG] Got response from Gemini vision")
-                    
-                    # Extract text from response
-                    if hasattr(response, 'text') and response.text:
-                        result = f"[Image Analysis]\n{response.text}"
-                        print(f"[DEBUG] Successfully extracted text (length: {len(result)})")
-                        return result
-                    else:
-                        return f"[Image file: {Path(image_path).name}] - Could not generate description (empty response)"
-                        
-                except Exception as pil_error:
-                    print(f"[DEBUG] PIL processing also failed: {pil_error}")
-                    return f"[Image file: {Path(image_path).name}] - Error processing: PIL cannot read image format and direct upload failed"
+            return self._try_pil_processing(image_path)
                 
         except Exception as e:
             print(f"[DEBUG] Exception in image processing: {e}")
             import traceback
             traceback.print_exc()
             return f"[Image file: {Path(image_path).name}] - Error processing: {str(e)}"
+    
+    def _try_direct_gemini_upload(self, image_path: str) -> Optional[str]:
+        """Try to process image using direct Gemini upload."""
+        try:
+            print("[DEBUG] Uploading image directly to Gemini...")
+            image_file = genai.upload_file(path=image_path)
+            
+            prompt = self._get_image_analysis_prompt()
+            print("[DEBUG] Calling Gemini vision model...")
+            response = self._vision_model.generate_content([prompt, image_file])
+            
+            # Clean up uploaded file
+            genai.delete_file(image_file.name)
+            print("[DEBUG] Got response from Gemini vision")
+            
+            return self._extract_response_text(response, image_path)
+            
+        except Exception as direct_error:
+            print(f"[DEBUG] Direct Gemini upload failed: {direct_error}")
+            return None
+    
+    def _try_pil_processing(self, image_path: str) -> str:
+        """Try to process image using PIL then Gemini."""
+        try:
+            image = Image.open(image_path)
+            print(f"[DEBUG] Image loaded with PIL: {image.size}, mode: {image.mode}")
+            
+            prompt = self._get_image_analysis_prompt()
+            print("[DEBUG] Calling Gemini vision model with PIL image...")
+            response = self._vision_model.generate_content([prompt, image])
+            print("[DEBUG] Got response from Gemini vision")
+            
+            return self._extract_response_text(response, image_path)
+            
+        except Exception as pil_error:
+            print(f"[DEBUG] PIL processing also failed: {pil_error}")
+            return f"[Image file: {Path(image_path).name}] - Error processing: PIL cannot read image format and direct upload failed"
+    
+    def _get_image_analysis_prompt(self) -> str:
+        """Get the comprehensive prompt for image analysis."""
+        return """
+        Analyze this image in detail and provide a comprehensive description that includes:
+        
+        1. Main subjects/objects in the image
+        2. Scene description and setting
+        3. Colors, composition, and visual elements
+        4. Any text visible in the image (OCR)
+        5. Important details that would be useful for understanding the content
+        6. Context or purpose if apparent
+        
+        Make the description detailed enough that someone could understand the key information from the image without seeing it.
+        """
+    
+    def _extract_response_text(self, response, image_path: str) -> str:
+        """Extract text from Gemini response."""
+        if hasattr(response, 'text') and response.text:
+            result = f"[Image Analysis]\n{response.text}"
+            print(f"[DEBUG] Successfully extracted text (length: {len(result)})")
+            return result
+        
+        # Try to extract from candidates
+        if hasattr(response, 'candidates') and response.candidates:
+            candidate = response.candidates[0]
+            if hasattr(candidate, 'content') and candidate.content:
+                parts = candidate.content.parts
+                if parts and len(parts) > 0:
+                    text = parts[0].text
+                    result = f"[Image Analysis]\n{text}"
+                    print(f"[DEBUG] Extracted from candidates (length: {len(result)})")
+                    return result
+        
+        return f"[Image file: {Path(image_path).name}] - Could not generate description (empty response)"
     
     def process_audio(self, audio_path: str) -> str:
         """

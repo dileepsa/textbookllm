@@ -22,6 +22,7 @@ class Document(BaseModel):
 	id: str
 	source_type: SourceType
 	source_path: Optional[str] = None
+	filename: Optional[str] = None  # Original filename for filtering
 	metadata: Dict[str, Any] = Field(default_factory=dict)
 	text_content: Optional[str] = None
 	# Future: binary payloads, extracted frames, transcripts
@@ -49,6 +50,8 @@ class IngestionResult(BaseModel):
 class QueryRequest(BaseModel):
 	query: str
 	max_results: int = 5
+	document_ids: Optional[List[str]] = None  # Filter by specific document IDs
+	filenames: Optional[List[str]] = None  # Filter by specific filenames
 
 
 class RetrievedChunk(BaseModel):
