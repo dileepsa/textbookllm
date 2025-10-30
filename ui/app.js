@@ -18,7 +18,19 @@ const ingestStatus = document.getElementById('ingest-status');
 
 function setStatus(el, msg, cls) {
   el.className = `status ${cls || ''}`.trim();
-  el.textContent = msg || '';
+  el.textContent = msg;
+}
+
+function getFileType(fileName) {
+  const ext = fileName.split('.').pop().toLowerCase();
+  const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'tiff', 'svg'];
+  const audioExts = ['mp3', 'wav', 'aac', 'flac', 'ogg', 'm4a', 'wma'];
+  const videoExts = ['mp4', 'avi', 'mov', 'wmv', 'flv', 'webm', 'mkv', 'm4v'];
+
+  if (imageExts.includes(ext)) return 'image';
+  if (audioExts.includes(ext)) return 'audio';
+  if (videoExts.includes(ext)) return 'video';
+  return 'text';
 }
 
 if (dropzone) {
@@ -44,16 +56,41 @@ uploadBtn?.addEventListener('click', async () => {
     setStatus(ingestStatus, 'Please choose a file.', 'err');
     return;
   }
+
+  const file = fileInput.files[0];
+  const fileName = file.name;
+  const fileSize = (file.size / 1024 / 1024).toFixed(2); // MB
+
   try {
-    setStatus(ingestStatus, 'Uploading...', 'loading');
+    setStatus(
+      ingestStatus,
+      `Uploading ${fileName} (${fileSize}MB)...`,
+      'loading'
+    );
     const fd = new FormData();
-    fd.append('file', fileInput.files[0]);
+    fd.append('file', file);
     const res = await fetch(`${API_BASE}/ingest`, { method: 'POST', body: fd });
     if (!res.ok) throw new Error(await res.text());
     const json = await res.json();
+
+    // Show file type specific success message
+    const fileType = getFileType(fileName);
+    const typeMsg =
+      fileType === 'text'
+        ? 'Text file'
+        : fileType === 'image'
+        ? 'Image'
+        : fileType === 'audio'
+        ? 'Audio file'
+        : fileType === 'video'
+        ? 'Video file'
+        : 'File';
+
     setStatus(
       ingestStatus,
-      `Ingested: ${json.document_id.slice(0, 8)}… (${json.num_chunks} chunks)`,
+      `${typeMsg} processed: ${json.document_id.slice(0, 8)}… (${
+        json.num_chunks
+      } chunks)`,
       'ok'
     );
   } catch (e) {

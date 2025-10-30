@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 from ..contracts import Chunker, Embedder, LLMClient, MetadataStore, Pipeline, Retriever, VectorStore
 from ..models import Chunk, Document, Embedding, IngestionResult, QueryRequest, QueryResponse, RetrievedChunk, SourceType
 from .gemini import GeminiClient
+from .multimedia import MultimediaProcessor
 
 # Load .env file from project root
 env_path = Path(__file__).parent.parent.parent.parent / ".env"
@@ -122,12 +123,15 @@ class EchoLLM(LLMClient):
 
 
 class DefaultPipeline(Pipeline):
-	def __init__(self) -> None:
+	def __init__(self, use_base64_multimedia: bool = False) -> None:
 		self.metadata = InMemoryMetadataStore()
 		self.chunker = SimpleChunker()
 		self.embedder = HashEmbedder()
 		self.vector_store = InMemoryVectorStore()
 		self.retriever = SimpleRetriever(self.vector_store, self.embedder, self.metadata)
+		
+		# Initialize multimedia processor with BASE64 option
+		self.multimedia_processor = MultimediaProcessor(use_base64=use_base64_multimedia)
 	
 		if os.environ.get("GEMINI_API_KEY"):
 			print("[DEBUG] Initializing GeminiClient...")
@@ -138,24 +142,62 @@ class DefaultPipeline(Pipeline):
 			self.llm = EchoLLM()
 
 	def ingest(self, source_path: str, *, mime_type: str | None = None) -> IngestionResult:
-		# Minimal ingestion: read text files; other types are placeholders
-		text: str
+		"""
+		Ingest a file (text, image, audio, or video) and extract text content.
+		"""
+		print(f"[DEBUG] Ingesting file: {source_path}")
 		if not os.path.exists(source_path):
 			raise FileNotFoundError(source_path)
-		with open(source_path, "r", encoding="utf-8", errors="ignore") as f:
-			text = f.read()
+		
+		# Determine file type and source type
+		file_type, detected_mime = self.multimedia_processor.get_file_type(source_path)
+		mime_type = mime_type or detected_mime
+		
+		# Map file types to SourceType enum
+		source_type_map = {
+			'image': SourceType.IMAGE,
+			'audio': SourceType.AUDIO,
+			'video': SourceType.VIDEO,
+			'text': SourceType.PLAIN
+		}
+		source_type = source_type_map.get(file_type, SourceType.PLAIN)
+		
+		print(f"[DEBUG] File type: {file_type}, Source type: {source_type}")
+		
+		# Process file to extract text content
+		if file_type in ['image', 'audio', 'video']:
+			print(f"[DEBUG] Processing multimedia file with Gemini...")
+			text_content = self.multimedia_processor.process_file(source_path)
+		else:
+			# Handle as text file
+			print(f"[DEBUG] Reading text file...")
+			with open(source_path, "r", encoding="utf-8", errors="ignore") as f:
+				text_content = f.read()
+		
+		print(f"[DEBUG] Extracted text content length: {len(text_content)}")
+		
+		# Create document
 		doc = Document(
 			id=str(uuid.uuid4()),
-			source_type=SourceType.PLAIN,
+			source_type=source_type,
 			source_path=source_path,
-			metadata={},
-			text_content=text,
+			metadata={"mime_type": mime_type, "file_type": file_type},
+			text_content=text_content,
 		)
+		
+		# Chunk the text content
 		chunks = self.chunker.chunk(doc)
+		print(f"[DEBUG] Created {len(chunks)} chunks")
+		
+		# Generate embeddings and store
 		embs = self.embedder.embed([c.text for c in chunks])
 		self.vector_store.upsert([c.id for c in chunks], embs, chunks)
+		
+		# Create and store ingestion result
 		result = IngestionResult(document=doc, chunks=chunks, num_chunks=len(chunks))
 		self.metadata.write_ingestion(result)
+		
+		print(f"[DEBUG] Ingestion complete. Document ID: {doc.id}")
 		return result
 
 	def query(self, request: QueryRequest) -> QueryResponse:

@@ -25,7 +25,11 @@ app.add_middleware(
 	allow_headers=["*"],
 )
 
-_pipeline = DefaultPipeline()
+# Check if BASE64 mode is enabled via environment variable
+use_base64_mode = os.getenv("USE_BASE64_MULTIMEDIA", "false").lower() == "true"
+print(f"[DEBUG] BASE64 multimedia mode: {'enabled' if use_base64_mode else 'disabled'}")
+
+_pipeline = DefaultPipeline(use_base64_multimedia=use_base64_mode)
 
 
 class IngestResponse(BaseModel):
@@ -44,7 +48,19 @@ async def ingest(file: UploadFile = File(...)):
 	contents = await file.read()
 	tmp_dir = os.path.join("/tmp", "textbookllm")
 	os.makedirs(tmp_dir, exist_ok=True)
-	local_path = os.path.join(tmp_dir, file.filename)
+	
+	# Sanitize filename to avoid issues with spaces and special characters
+	import re
+	import uuid
+	safe_filename = re.sub(r'[^\w\-_.]', '_', file.filename or 'upload')
+	# Add UUID to ensure uniqueness
+	name_parts = safe_filename.rsplit('.', 1)
+	if len(name_parts) == 2:
+		safe_filename = f"{name_parts[0]}_{str(uuid.uuid4())[:8]}.{name_parts[1]}"
+	else:
+		safe_filename = f"{safe_filename}_{str(uuid.uuid4())[:8]}"
+	
+	local_path = os.path.join(tmp_dir, safe_filename)
 	with open(local_path, "wb") as f:
 		f.write(contents)
 	result = _pipeline.ingest(local_path, mime_type=file.content_type)
