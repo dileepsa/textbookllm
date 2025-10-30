@@ -11,7 +11,7 @@ from ..contracts import LLMClient
 class GeminiClient(LLMClient):
 	"""Client for Google's Gemini LLM using the generativeai SDK."""
 
-	def __init__(self, model: str | None = None, api_key: Optional[str] = None) -> None:
+	def __init__(self, model: Optional[str] = None, api_key: Optional[str] = None) -> None:
 		"""Initialize Gemini client.
 		
 		Args:

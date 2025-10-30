@@ -3,7 +3,7 @@
 
 from chromadb import Client as ChromaClient
 from chromadb.config import Settings
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 import json
 from ..models import Chunk, Document, Embedding, IngestionResult
 from ..contracts import VectorStore, MetadataStore
@@ -65,7 +65,7 @@ class ChromaDBMetadataStore(MetadataStore):
         for c in result.chunks:
             self._chunks[c.id] = c
 
-    def get_document(self, document_id: str) -> Document | None:
+    def get_document(self, document_id: str) -> Optional[Document]:
         return self._documents.get(document_id)
 
     def get_chunks(self, chunk_ids: List[str]) -> List[Chunk]:

@@ -1,7 +1,7 @@
 """In-memory metadata store implementation."""
 from __future__ import annotations
 
-from typing import List
+from typing import List, Optional
 
 from ..contracts import MetadataStore
 from ..models import Document, Chunk, IngestionResult
@@ -20,7 +20,7 @@ class InMemoryMetadataStore(MetadataStore):
 		for c in result.chunks:
 			self._chunks[c.id] = c
 
-	def get_document(self, document_id: str) -> Document | None:
+	def get_document(self, document_id: str) -> Optional[Document]:
 		"""Retrieve document metadata by ID."""
 		return self._documents.get(document_id)
 

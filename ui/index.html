@@ -20,9 +20,34 @@
           <div class="dz-instructions">
             Drop files here or
             <label for="file" class="link">browse</label>
+            <div class="file-types">
+              Supports: Text, Images (jpg, png, gif), Audio (mp3, wav), Video
+              (mp4, avi)
+            </div>
           </div>
-          <input type="file" id="file" name="file" hidden />
+          <input
+            type="file"
+            id="file"
+            name="file"
+            accept=".txt,.md,.pdf,.docx,.jpg,.jpeg,.png,.gif,.bmp,.webp,.mp3,.wav,.aac,.flac,.mp4,.avi,.mov,.wmv"
+            hidden
+          />
         </div>
+
+        <!-- Selected File Display -->
+        <div id="selected-file" class="selected-file" style="display: none">
+          <div class="file-preview">
+            <span class="file-icon">📄</span>
+            <div class="file-details">
+              <div class="file-name" id="selected-file-name"></div>
+              <div class="file-size" id="selected-file-size"></div>
+            </div>
+            <button class="remove-file" id="remove-file" title="Remove file">
+              ✕
+            </button>
+          </div>
+        </div>
+
         <div class="row">
           <button id="upload-btn">Upload</button>
           <div id="ingest-status" class="status"></div>

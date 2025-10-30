@@ -1,21 +1,26 @@
-"""FastAPI application for TextbookLLM."""
-
 from __future__ import annotations
 
 import os
+import sys
+import uuid
 from pathlib import Path
 from typing import Optional, List
+
+# Add the project root to Python path
+project_root = Path(__file__).parent.parent.parent.parent
+sys.path.insert(0, str(project_root))
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+import aiofiles
 
-from ..models import QueryRequest, QueryResponse, Document
-from ..services.pipeline import DefaultPipeline
+from src.textbookllm.models import QueryRequest, QueryResponse, Document
+from src.textbookllm.services.pipeline import DefaultPipeline
 
 # Load .env file from project root
-_env_path = Path(__file__).parent.parent.parent.parent / ".env"
+_env_path = project_root / ".env"
 load_dotenv(_env_path)
 
 
@@ -28,7 +33,11 @@ app.add_middleware(
 	allow_headers=["*"],
 )
 
-_pipeline = DefaultPipeline()
+# Check if BASE64 mode is enabled via environment variable
+use_base64_mode = os.getenv("USE_BASE64_MULTIMEDIA", "false").lower() == "true"
+print(f"[DEBUG] BASE64 multimedia mode: {'enabled' if use_base64_mode else 'disabled'}")
+
+_pipeline = DefaultPipeline(use_base64_multimedia=use_base64_mode)
 
 
 class IngestResponse(BaseModel):
@@ -61,10 +70,22 @@ async def ingest(file: UploadFile = File(...)) -> IngestResponse:
 	contents = await file.read()
 	tmp_dir = os.path.join("/tmp", "textbookllm")
 	os.makedirs(tmp_dir, exist_ok=True)
-	local_path = os.path.join(tmp_dir, file.filename or "uploaded_file")
 	
-	with open(local_path, "wb") as f:
-		f.write(contents)
+	# Sanitize filename to avoid issues with spaces and special characters
+	import re
+	import uuid
+	import aiofiles
+	safe_filename = re.sub(r'[^\w.]', '_', file.filename or 'upload')
+	# Add UUID to ensure uniqueness
+	name_parts = safe_filename.rsplit('.', 1)
+	if len(name_parts) == 2:
+		safe_filename = f"{name_parts[0]}_{str(uuid.uuid4())[:8]}.{name_parts[1]}"
+	else:
+		safe_filename = f"{safe_filename}_{str(uuid.uuid4())[:8]}"
+	
+	local_path = os.path.join(tmp_dir, safe_filename)
+	async with aiofiles.open(local_path, "wb") as f:
+		await f.write(contents)
 	
 	result = _pipeline.ingest(local_path, mime_type=file.content_type)
 	return IngestResponse(document_id=result.document.id, num_chunks=result.num_chunks)
@@ -186,3 +207,8 @@ def root() -> dict:
 		Service information.
 	"""
 	return {"service": "textbookllm", "version": "0.1.0"}
+
+
+if __name__ == "__main__":
+	import uvicorn
+	uvicorn.run(app, host="127.0.0.1", port=8000)
