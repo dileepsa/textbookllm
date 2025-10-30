@@ -45,10 +45,140 @@ uploadBtn?.addEventListener("click", async () => {
       `Ingested: ${json.document_id.slice(0, 8)}… (${json.num_chunks} chunks)`,
       "ok"
     );
+    // Refresh both file lists after upload
+    await loadFileList();
+    await loadUploadedFilesList();
   } catch (e) {
     setStatus(ingestStatus, `Upload failed: ${e}`, "err");
   }
 });
+
+// Uploaded files list (with delete)
+const uploadedFilesList = document.getElementById("uploaded-files-list");
+
+async function loadUploadedFilesList() {
+  try {
+    const res = await fetch(`${API_BASE}/documents/summary`);
+    if (!res.ok) throw new Error("Failed to load files");
+    const files = await res.json();
+
+    if (files.length === 0) {
+      uploadedFilesList.innerHTML =
+        '<p class="muted">No files uploaded yet</p>';
+      return;
+    }
+
+    uploadedFilesList.innerHTML = "";
+    files.forEach((file) => {
+      const item = document.createElement("div");
+      item.className = "uploaded-file-item";
+
+      const info = document.createElement("div");
+      info.className = "file-info";
+
+      const name = document.createElement("span");
+      name.className = "file-name";
+      name.textContent = file.filename || file.id.slice(0, 8) + "…";
+
+      const type = document.createElement("span");
+      type.className = "file-type muted";
+      type.textContent = file.source_type;
+
+      info.appendChild(name);
+      info.appendChild(type);
+
+      const deleteBtn = document.createElement("button");
+      deleteBtn.className = "delete-btn";
+      deleteBtn.textContent = "✕";
+      deleteBtn.title = "Delete file";
+      deleteBtn.onclick = async () => {
+        if (confirm(`Delete "${file.filename}"?`)) {
+          await deleteDocument(file.id);
+        }
+      };
+
+      item.appendChild(info);
+      item.appendChild(deleteBtn);
+      uploadedFilesList.appendChild(item);
+    });
+  } catch (e) {
+    uploadedFilesList.innerHTML = `<p class="muted err">Error loading files: ${e.message}</p>`;
+  }
+}
+
+async function deleteDocument(documentId) {
+  try {
+    const res = await fetch(`${API_BASE}/documents/${documentId}`, {
+      method: "DELETE",
+    });
+    if (!res.ok) throw new Error("Failed to delete document");
+    const json = await res.json();
+
+    if (json.success) {
+      // Refresh both lists
+      await loadUploadedFilesList();
+      await loadFileList();
+      setStatus(ingestStatus, "File deleted successfully", "ok");
+    } else {
+      setStatus(ingestStatus, json.message || "Delete failed", "err");
+    }
+  } catch (e) {
+    setStatus(ingestStatus, `Delete failed: ${e}`, "err");
+  }
+}
+
+// Load uploaded files on page load
+loadUploadedFilesList();
+
+// File filtering functionality
+const filterToggle = document.getElementById("filter-files-toggle");
+const fileSelector = document.getElementById("file-selector");
+const fileList = document.getElementById("file-list");
+
+filterToggle?.addEventListener("change", () => {
+  if (filterToggle.checked) {
+    fileSelector.style.display = "block";
+    loadFileList();
+  } else {
+    fileSelector.style.display = "none";
+  }
+});
+
+async function loadFileList() {
+  try {
+    const res = await fetch(`${API_BASE}/documents/summary`);
+    if (!res.ok) throw new Error("Failed to load files");
+    const files = await res.json();
+
+    if (files.length === 0) {
+      fileList.innerHTML = '<p class="muted">No files uploaded yet</p>';
+      return;
+    }
+
+    fileList.innerHTML = "";
+    files.forEach((file) => {
+      const label = document.createElement("label");
+      label.className = "file-checkbox";
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.value = file.filename || file.id;
+      checkbox.dataset.filename = file.filename;
+      checkbox.className = "file-filter-cb";
+      label.appendChild(checkbox);
+      label.appendChild(
+        document.createTextNode(
+          ` ${file.filename || file.id.slice(0, 8) + "…"}`
+        )
+      );
+      fileList.appendChild(label);
+    });
+  } catch (e) {
+    fileList.innerHTML = `<p class="muted err">Error loading files: ${e.message}</p>`;
+  }
+}
+
+// Load file list on page load
+loadFileList();
 
 const queryForm = document.getElementById("query-form");
 const answerEl = document.getElementById("answer");
@@ -77,7 +207,26 @@ queryForm?.addEventListener("submit", async (e) => {
     const fd = new FormData();
     fd.append("q", q);
     fd.append("k", k);
-    const res = await fetch(`${API_BASE}/query`, { method: "POST", body: fd });
+
+    // Check if file filtering is enabled
+    const useFiltering = filterToggle?.checked;
+    let endpoint = `${API_BASE}/query`;
+
+    if (useFiltering) {
+      // Get selected files
+      const selectedFiles = Array.from(
+        document.querySelectorAll(".file-filter-cb:checked")
+      )
+        .map((cb) => cb.dataset.filename)
+        .filter(Boolean);
+
+      if (selectedFiles.length > 0) {
+        endpoint = `${API_BASE}/query-filtered`;
+        fd.append("filenames", selectedFiles.join(","));
+      }
+    }
+
+    const res = await fetch(endpoint, { method: "POST", body: fd });
     if (!res.ok) throw new Error(await res.text());
     const json = await res.json();
     answerEl.textContent = json.answer || "";
